@@ -173,6 +173,7 @@ const ytmViewIntegrationScripts: { [name: string]: { [name: string]: string } } 
 let mainWindow: BrowserWindow = null;
 let settingsWindow: BrowserWindow = null;
 let ytmView: BrowserView = null;
+let ytVideoView: BrowserView = null;
 let tray: Tray = null;
 let trayContextMenu = null;
 
@@ -1015,6 +1016,15 @@ function isPreventedNavOrRedirect(url: URL): boolean {
     !urlIsGoogleAccountsDomain(url)
   );
 }
+function isPreventedVideoNavOrRedirect(url: URL): boolean {
+  return (
+    url.hostname !== "www.youtube.com" &&
+    url.hostname !== "youtube.com" &&
+    url.hostname !== "consent.youtube.com" &&
+    url.hostname !== "accounts.youtube.com" &&
+    !urlIsGoogleAccountsDomain(url)
+  );
+}
 
 const createYTMView = (): void => {
   memoryStore.set("ytmViewLoadTimedout", false);
@@ -1198,6 +1208,98 @@ const createYTMView = (): void => {
   }, 30 * 1000);
 };
 
+const createYTVideoView = (): void => {
+  ytVideoView = new BrowserView({
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      partition: app.isPackaged ? "persist:ytvideoview" : "persist:ytvideoview-dev",
+      preload: path.join(__dirname, `../renderer/windows/ytvideoview/preload.js`),
+      autoplayPolicy: "no-user-gesture-required"
+    }
+  });
+
+  ytVideoView.webContents.on("will-navigate", event => {
+    const url = new URL(event.url);
+    if (isPreventedVideoNavOrRedirect(url)) {
+      event.preventDefault();
+      log.info(`Blocking YT Video View navigation to ${event.url}`);
+      openExternalFromYtmView(event.url);
+    }
+  });
+  ytVideoView.webContents.on("will-redirect", event => {
+    const url = new URL(event.url);
+    if (isPreventedVideoNavOrRedirect(url)) {
+      event.preventDefault();
+      log.info(`Blocking YT Video View redirect to ${event.url}`);
+    }
+  });
+
+  ytVideoView.webContents.on("render-process-gone", () => {
+    log.error("YT Video View render process gone — recreating");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (ytVideoView.webContents as any).destroy();
+    ytVideoView = null;
+    createYTVideoView();
+  });
+
+  ytVideoView.webContents.on("context-menu", (_event, params) => {
+    if (store.get("developer.enableDevTools")) {
+      Menu.buildFromTemplate([
+        { label: "YTVD", type: "normal", enabled: false },
+        { type: "separator" },
+        {
+          label: "Open Developer Tools",
+          type: "normal",
+          click: () => {
+            if (ytVideoView) {
+              ytVideoView.webContents.openDevTools({ mode: "detach" });
+            }
+          }
+        }
+      ]).popup({
+        window: mainWindow,
+        x: params.x,
+        y: params.y,
+        sourceType: params.menuSourceType
+      });
+    }
+  });
+
+  ytVideoView.webContents.setWindowOpenHandler(details => {
+    openExternalFromYtmView(details.url);
+    return { action: "deny" };
+  });
+
+  ytVideoView.webContents.loadURL("https://www.youtube.com/");
+};
+
+function showYTVideoView() {
+  if (!mainWindow || !ytVideoView) return;
+  mainWindow.addBrowserView(ytVideoView);
+  if (mainWindow.fullScreen) {
+    ytVideoView.setBounds({
+      x: 0,
+      y: 0,
+      width: mainWindow.getContentBounds().width,
+      height: mainWindow.getContentBounds().height
+    });
+  } else {
+    ytVideoView.setBounds({
+      x: 0,
+      y: 36,
+      width: mainWindow.getContentBounds().width,
+      height: mainWindow.getContentBounds().height - 36
+    });
+  }
+  mainWindow.setTopBrowserView(ytVideoView);
+}
+
+function hideYTVideoView() {
+  if (!mainWindow || !ytVideoView) return;
+  mainWindow.removeBrowserView(ytVideoView);
+}
+
 const createMainWindow = (): void => {
   // Create the browser window.
   const scaleFactor = screen.getPrimaryDisplay().scaleFactor;
@@ -1237,47 +1339,47 @@ const createMainWindow = (): void => {
   // Attach events to main window
   mainWindow.on("resize", () => {
     setTimeout(() => {
-      if (ytmView) {
-        if (mainWindow.fullScreen) {
-          ytmView.setBounds({
-            x: 0,
-            y: 0,
-            width: mainWindow.getContentBounds().width,
-            height: mainWindow.getContentBounds().height
-          });
-        } else {
-          ytmView.setBounds({
-            x: 0,
-            y: 36,
-            width: mainWindow.getContentBounds().width,
-            height: mainWindow.getContentBounds().height - 36
-          });
-        }
-      }
+      const fullscreenBounds = {
+        x: 0,
+        y: 0,
+        width: mainWindow.getContentBounds().width,
+        height: mainWindow.getContentBounds().height
+      };
+      const titlebarBounds = {
+        x: 0,
+        y: 36,
+        width: mainWindow.getContentBounds().width,
+        height: mainWindow.getContentBounds().height - 36
+      };
+      const bounds = mainWindow.fullScreen ? fullscreenBounds : titlebarBounds;
+      if (ytmView) ytmView.setBounds(bounds);
+      if (ytVideoView) ytVideoView.setBounds(bounds);
     });
   });
 
   mainWindow.on("enter-full-screen", () => {
     setTimeout(() => {
-      if (ytmView) {
-        ytmView.setBounds({
-          x: 0,
-          y: 0,
-          width: mainWindow.getContentBounds().width,
-          height: mainWindow.getContentBounds().height
-        });
-      }
+      const bounds = {
+        x: 0,
+        y: 0,
+        width: mainWindow.getContentBounds().width,
+        height: mainWindow.getContentBounds().height
+      };
+      if (ytmView) ytmView.setBounds(bounds);
+      if (ytVideoView) ytVideoView.setBounds(bounds);
     });
     sendMainWindowStateIpc();
   });
   mainWindow.on("leave-full-screen", () => {
     setTimeout(() => {
-      ytmView.setBounds({
+      const bounds = {
         x: 0,
         y: 36,
         width: mainWindow.getContentBounds().width,
         height: mainWindow.getContentBounds().height - 36
-      });
+      };
+      if (ytmView) ytmView.setBounds(bounds);
+      if (ytVideoView) ytVideoView.setBounds(bounds);
     });
     sendMainWindowStateIpc();
   });
@@ -1851,6 +1953,23 @@ app.on("ready", async () => {
       type: "separator"
     },
     {
+      label: "Show YouTube Video",
+      type: "normal",
+      click: () => {
+        showYTVideoView();
+      }
+    },
+    {
+      label: "Show Music",
+      type: "normal",
+      click: () => {
+        hideYTVideoView();
+      }
+    },
+    {
+      type: "separator"
+    },
+    {
       label: "Quit",
       type: "normal",
       click: () => {
@@ -1899,6 +2018,10 @@ app.on("ready", async () => {
   // Create the YouTube Music view
   createYTMView();
   log.info("Created YTM view");
+
+  // Create the YouTube Video view (Phase 1 — kept alive in background; not yet attached to a window).
+  createYTVideoView();
+  log.info("Created YT Video view");
 
   // Setup taskbar features
   setupTaskbarFeatures();
@@ -1981,6 +2104,7 @@ app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createMainWindow();
     createYTMView();
+    createYTVideoView();
   }
 });
 

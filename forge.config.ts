@@ -104,6 +104,11 @@ const config: ForgeConfig = {
           entry: "src/renderer/ytmview/preload.ts",
           config: "viteconfig/preload/ytmview.ts",
           target: "preload"
+        },
+        {
+          entry: "src/renderer/ytvideoview/preload.ts",
+          config: "viteconfig/preload/ytvideoview.ts",
+          target: "preload"
         }
       ],
       renderer: [
