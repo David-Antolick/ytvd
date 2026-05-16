@@ -18,7 +18,7 @@ for (let i = 0; i < process.argv.length; i++) {
 
 const config: ForgeConfig = {
   packagerConfig: {
-    executableName: "youtube-music-desktop-app",
+    executableName: "ytvd",
     icon: "./src/assets/icons/ytmd",
     extraResource: [
       "./src/assets/icons/tray.ico",
@@ -35,8 +35,8 @@ const config: ForgeConfig = {
     ],
     protocols: [
       {
-        name: "YouTube Music Desktop App",
-        schemes: ["ytmd"]
+        name: "YTVD",
+        schemes: ["ytvd"]
       }
     ],
     appCategoryType: "public.app-category.music",
@@ -51,14 +51,14 @@ const config: ForgeConfig = {
     new MakerRpm({
       options: {
         categories: ["AudioVideo", "Audio"],
-        mimeType: ["x-scheme-handler/ytmd"],
+        mimeType: ["x-scheme-handler/ytvd"],
         icon: "./src/assets/icons/ytmd.png"
       }
     }),
     new MakerDeb({
       options: {
         categories: ["AudioVideo", "Audio"],
-        mimeType: ["x-scheme-handler/ytmd"],
+        mimeType: ["x-scheme-handler/ytvd"],
         section: "sound",
         icon: "./src/assets/icons/ytmd.png"
       }
@@ -68,9 +68,10 @@ const config: ForgeConfig = {
     {
       name: "@electron-forge/publisher-github",
       config: {
+        // YTVD: must set YTMD_UPDATE_FEED_OWNER + YTMD_UPDATE_FEED_REPOSITORY before publishing.
         repository: {
-          owner: process.env.YTMD_UPDATE_FEED_OWNER ?? "ytmdesktop",
-          name: process.env.YTMD_UPDATE_FEED_REPOSITORY ?? "ytmdesktop"
+          owner: process.env.YTMD_UPDATE_FEED_OWNER ?? "ytvd-placeholder-owner",
+          name: process.env.YTMD_UPDATE_FEED_REPOSITORY ?? "ytvd-placeholder-repo"
         }
       }
     }

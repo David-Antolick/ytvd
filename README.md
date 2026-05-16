@@ -1,4 +1,14 @@
-# YouTube Music Desktop App
+# YTVD
+
+> **Forked from [ytmdesktop/ytmdesktop](https://github.com/ytmdesktop/ytmdesktop) — thanks to the YTMD team for the foundation.**
+>
+> YTVD extends YTMD with parallel YouTube video support: two BrowserViews (music + video) in one window, single audio bus, companion-server API split into `/api/v1/playback/*` (generic) + `/api/v1/music/*` + `/api/v1/video/*`. Personal project, GPL-3.0, no SLA.
+>
+> Not affiliated with Google, YouTube, or YTMDesktop.
+
+---
+
+# YouTube Music Desktop App (upstream README below)
 ### Now with a Fresh new Codebase 😉
 
 ![YouTube Music Desktop App](.github/images/readme_main_app.png)
