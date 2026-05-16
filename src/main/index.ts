@@ -26,6 +26,7 @@ import electronSquirrelStartup from "electron-squirrel-startup";
 
 import MemoryStore from "./memory-store";
 import playerStateStore, { PlayerState, VideoState } from "./player-state-store";
+import sourceCoordinator from "./source-coordinator";
 import { MemoryStoreSchema, StoreSchema, TrayIconStyle } from "../shared/store/schema";
 
 import CompanionServer from "./integrations/companion-server";
@@ -174,6 +175,8 @@ let mainWindow: BrowserWindow = null;
 let settingsWindow: BrowserWindow = null;
 let ytmView: BrowserView = null;
 let ytVideoView: BrowserView = null;
+let ytVideoViewEverShown = false;
+let activeView: "music" | "video" = "music";
 let tray: Tray = null;
 let trayContextMenu = null;
 
@@ -487,7 +490,7 @@ store.onDidAnyChange(async (newState, oldState) => {
   let companionServerAuthWindowEnabled = memoryStore.get("companionServerAuthWindowEnabled") ?? false;
 
   if (newState.integrations.companionServerEnabled) {
-    companionServer.provide(store, memoryStore, ytmView);
+    companionServer.provide(store, memoryStore, ytmView, ytVideoView);
   }
   if (newState.integrations.companionServerEnabled && !oldState.integrations.companionServerEnabled) {
     companionServer.enable();
@@ -1035,12 +1038,15 @@ const createYTMView = (): void => {
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
-      partition: app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev",
+      // YTVD: shared partition for both views so Google sign-in carries across music + video.
+      partition: app.isPackaged ? "persist:ytvd" : "persist:ytvd-dev",
       preload: path.join(__dirname, `../renderer/windows/ytmview/preload.js`),
-      autoplayPolicy: store.get("playback.continueWhereYouLeftOffPaused") ? "document-user-activation-required" : "no-user-gesture-required"
+      autoplayPolicy: store.get("playback.continueWhereYouLeftOffPaused") ? "document-user-activation-required" : "no-user-gesture-required",
+      // YTVD: keep HTML5 fullscreen confined to the BrowserView — don't OS-fullscreen the whole window.
+      disableHtmlFullscreenWindowResize: true
     }
   });
-  companionServer.provide(store, memoryStore, ytmView);
+  companionServer.provide(store, memoryStore, ytmView, ytVideoView);
   customCss.provide(store, ytmView);
   ratioVolume.provide(ytmView);
 
@@ -1076,14 +1082,10 @@ const createYTMView = (): void => {
   ytmView.webContents.on("did-navigate", ytmViewNavigated);
   ytmView.webContents.on("did-navigate-in-page", ytmViewNavigated);
   ytmView.webContents.on("enter-html-full-screen", () => {
-    if (mainWindow) {
-      mainWindow.setFullScreen(true);
-    }
+    applyInWindowFullscreen(ytmView);
   });
   ytmView.webContents.on("leave-html-full-screen", () => {
-    if (mainWindow) {
-      mainWindow.setFullScreen(false);
-    }
+    applyNormalViewBounds(ytmView);
   });
   ytmView.webContents.on("render-process-gone", () => {
     store.set("state.lastUrl", lastUrl);
@@ -1213,9 +1215,12 @@ const createYTVideoView = (): void => {
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
-      partition: app.isPackaged ? "persist:ytvideoview" : "persist:ytvideoview-dev",
+      // YTVD: shared partition for both views so Google sign-in carries across music + video.
+      partition: app.isPackaged ? "persist:ytvd" : "persist:ytvd-dev",
       preload: path.join(__dirname, `../renderer/windows/ytvideoview/preload.js`),
-      autoplayPolicy: "no-user-gesture-required"
+      autoplayPolicy: "no-user-gesture-required",
+      // YTVD: keep HTML5 fullscreen confined to the BrowserView — don't OS-fullscreen the whole window.
+      disableHtmlFullscreenWindowResize: true
     }
   });
 
@@ -1233,6 +1238,13 @@ const createYTVideoView = (): void => {
       event.preventDefault();
       log.info(`Blocking YT Video View redirect to ${event.url}`);
     }
+  });
+
+  ytVideoView.webContents.on("enter-html-full-screen", () => {
+    applyInWindowFullscreen(ytVideoView);
+  });
+  ytVideoView.webContents.on("leave-html-full-screen", () => {
+    applyNormalViewBounds(ytVideoView);
   });
 
   ytVideoView.webContents.on("render-process-gone", () => {
@@ -1274,6 +1286,26 @@ const createYTVideoView = (): void => {
   ytVideoView.webContents.loadURL("https://www.youtube.com/");
 };
 
+function applyInWindowFullscreen(view: BrowserView) {
+  if (!mainWindow) return;
+  view.setBounds({
+    x: 0,
+    y: 0,
+    width: mainWindow.getContentBounds().width,
+    height: mainWindow.getContentBounds().height
+  });
+}
+
+function applyNormalViewBounds(view: BrowserView) {
+  if (!mainWindow) return;
+  view.setBounds({
+    x: 0,
+    y: 36,
+    width: mainWindow.getContentBounds().width,
+    height: mainWindow.getContentBounds().height - 36
+  });
+}
+
 function showYTVideoView() {
   if (!mainWindow || !ytVideoView) return;
   mainWindow.addBrowserView(ytVideoView);
@@ -1293,11 +1325,21 @@ function showYTVideoView() {
     });
   }
   mainWindow.setTopBrowserView(ytVideoView);
+  activeView = "video";
+
+  // YouTube's home loaded with zero bounds while the BrowserView was detached, so its
+  // layout computed against an empty viewport and nothing rendered. Force-reload once
+  // the first time the view is actually shown so YouTube re-lays out against real bounds.
+  if (!ytVideoViewEverShown) {
+    ytVideoViewEverShown = true;
+    ytVideoView.webContents.reload();
+  }
 }
 
 function hideYTVideoView() {
   if (!mainWindow || !ytVideoView) return;
   mainWindow.removeBrowserView(ytVideoView);
+  activeView = "music";
 }
 
 const createMainWindow = (): void => {
@@ -1877,11 +1919,24 @@ app.on("ready", async () => {
     autoUpdater.quitAndInstall();
   });
 
+  ipcMain.on("activeView:toggle", event => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    if (activeView === "music") {
+      showYTVideoView();
+    } else {
+      hideYTVideoView();
+    }
+  });
+  ipcMain.handle("activeView:get", event => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    return activeView;
+  });
+
   log.info("Setup IPC handlers");
 
   // Create the permission handlers
-  session.fromPartition(app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev").setPermissionCheckHandler((webContents, permission) => {
-    if (webContents == ytmView.webContents) {
+  session.fromPartition(app.isPackaged ? "persist:ytvd" : "persist:ytvd-dev").setPermissionCheckHandler((webContents, permission) => {
+    if (webContents == ytmView?.webContents || webContents == ytVideoView?.webContents) {
       if (permission === "fullscreen") {
         return true;
       }
@@ -1889,8 +1944,8 @@ app.on("ready", async () => {
 
     return false;
   });
-  session.fromPartition(app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev").setPermissionRequestHandler((webContents, permission, callback) => {
-    if (webContents == ytmView.webContents) {
+  session.fromPartition(app.isPackaged ? "persist:ytvd" : "persist:ytvd-dev").setPermissionRequestHandler((webContents, permission, callback) => {
+    if (webContents == ytmView?.webContents || webContents == ytVideoView?.webContents) {
       if (permission === "fullscreen") {
         return callback(true);
       }
@@ -2023,6 +2078,10 @@ app.on("ready", async () => {
   createYTVideoView();
   log.info("Created YT Video view");
 
+  // Wire up the audio-bus coordinator now that both views exist.
+  sourceCoordinator.provide(ytmView, ytVideoView);
+  log.info("SourceCoordinator wired");
+
   // Setup taskbar features
   setupTaskbarFeatures();
   log.info("Setup taskbar features");
@@ -2057,7 +2116,7 @@ app.on("ready", async () => {
 
   // CompanionServer
   if (store.get("integrations").companionServerEnabled) {
-    companionServer.provide(store, memoryStore, ytmView);
+    companionServer.provide(store, memoryStore, ytmView, ytVideoView);
     companionServer.enable();
     log.info("Integration enabled: Companion server");
   }
@@ -2105,6 +2164,7 @@ app.on("activate", () => {
     createMainWindow();
     createYTMView();
     createYTVideoView();
+    sourceCoordinator.provide(ytmView, ytVideoView);
   }
 });
 

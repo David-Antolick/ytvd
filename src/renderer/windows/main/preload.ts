@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("ytmd", {
   switchFocus: (context: string) => ipcRenderer.send("ytmView:switchFocus", context),
   ytmViewNavigateDefault: () => ipcRenderer.send("ytmView:navigateDefault"),
   ytmViewRecreate: () => ipcRenderer.send("ytmView:recreate"),
+  toggleActiveView: () => ipcRenderer.send("activeView:toggle"),
+  getActiveView: (): Promise<"music" | "video"> => ipcRenderer.invoke("activeView:get"),
   memoryStore: {
     set: (key: string, value: unknown) => memoryStore.set(key, value),
     get: async (key: keyof MemoryStoreSchema) => await memoryStore.get(key),

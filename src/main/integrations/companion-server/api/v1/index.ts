@@ -30,6 +30,8 @@ import {
   YouTubeMusicUnavailableError
 } from "../../api-shared/errors";
 import path from "node:path";
+import CompanionServerAPIv1Video from "./video";
+import CompanionServerAPIv1Playback from "./playback";
 
 declare const ALL_WINDOWS_VITE_DEV_SERVER_URL: string;
 
@@ -85,6 +87,7 @@ const transformPlayerState = (state: PlayerState) => {
 interface CompanionServerAPIv1Options extends FastifyPluginOptions {
   getStore: () => Conf<StoreSchema>;
   getYtmView: () => BrowserView;
+  getYtVideoView: () => BrowserView;
 }
 
 type Playlist = {
@@ -235,6 +238,17 @@ const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> =
     global: true,
     max: 100,
     timeWindow: 1000 * 60
+  });
+
+  await fastify.register(CompanionServerAPIv1Video, {
+    prefix: "/video",
+    getStore: options.getStore,
+    getYtVideoView: options.getYtVideoView
+  });
+
+  await fastify.register(CompanionServerAPIv1Playback, {
+    prefix: "/playback",
+    getStore: options.getStore
   });
 
   fastify.post<{ Body: APIV1RequestCodeBodyType }>(

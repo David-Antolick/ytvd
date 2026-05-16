@@ -45,15 +45,24 @@ function watchForVideoElement() {
   setInterval(check, 1000);
 }
 
-async function callPlayerApi(method: string, arg?: number) {
-  const argLiteral = arg === undefined ? "" : `${arg}, true`;
+async function callPlayerApi(method: string, argsLiteral: string = "") {
+  // argsLiteral is a literal JS arg list; callers must pass validated numbers only — no string interpolation of untrusted data.
   (
     await webFrame.executeJavaScript(`
       (function() {
-        document.querySelector("#movie_player")?.${method}(${argLiteral});
+        document.querySelector("#movie_player")?.${method}(${argsLiteral});
       })
     `)
   )();
+}
+
+async function readVolumePercent(): Promise<number> {
+  const v = await webFrame.executeJavaScript(`
+    (function() {
+      return document.querySelector("#movie_player")?.getVolume?.() ?? null;
+    })()
+  `);
+  return typeof v === "number" ? v : 0;
 }
 
 ipcRenderer.on("ytVideoView:execute", async (_event, command: string, value?: unknown) => {
@@ -72,7 +81,7 @@ ipcRenderer.on("ytVideoView:execute", async (_event, command: string, value?: un
     case "seekTo": {
       const seconds = Number(value);
       if (!Number.isFinite(seconds)) return;
-      await callPlayerApi("seekTo", seconds);
+      await callPlayerApi("seekTo", `${seconds}, true`);
       break;
     }
     case "seekRelative": {
@@ -80,7 +89,39 @@ ipcRenderer.on("ytVideoView:execute", async (_event, command: string, value?: un
       const video = findVideoElement();
       if (!Number.isFinite(delta) || !video) return;
       const target = Math.max(0, Math.min(video.duration || Number.MAX_SAFE_INTEGER, video.currentTime + delta));
-      await callPlayerApi("seekTo", target);
+      await callPlayerApi("seekTo", `${target}, true`);
+      break;
+    }
+    case "mute": {
+      const video = findVideoElement();
+      if (video) video.muted = true;
+      break;
+    }
+    case "unmute": {
+      const video = findVideoElement();
+      if (video) video.muted = false;
+      break;
+    }
+    case "setVolume": {
+      const v = Number(value);
+      if (!Number.isFinite(v)) return;
+      await callPlayerApi("setVolume", `${Math.max(0, Math.min(100, v))}`);
+      break;
+    }
+    case "volumeUp": {
+      const current = await readVolumePercent();
+      await callPlayerApi("setVolume", `${Math.min(100, current + 10)}`);
+      break;
+    }
+    case "volumeDown": {
+      const current = await readVolumePercent();
+      await callPlayerApi("setVolume", `${Math.max(0, current - 10)}`);
+      break;
+    }
+    case "setPlaybackRate": {
+      const r = Number(value);
+      if (!Number.isFinite(r)) return;
+      await callPlayerApi("setPlaybackRate", `${Math.max(0.25, Math.min(2, r))}`);
       break;
     }
   }

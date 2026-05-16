@@ -21,6 +21,7 @@ export default class CompanionServer implements IIntegration {
   private store: Conf<StoreSchema>;
   private memoryStore: MemoryStore<MemoryStoreSchema>;
   private ytmView: BrowserView;
+  private ytVideoView: BrowserView;
   private storeListener: () => void | null = null;
 
   private createServer() {
@@ -42,6 +43,9 @@ export default class CompanionServer implements IIntegration {
       prefix: "/api/v1",
       getYtmView: () => {
         return this.ytmView;
+      },
+      getYtVideoView: () => {
+        return this.ytVideoView;
       },
       getStore: () => {
         return this.store;
@@ -73,10 +77,11 @@ export default class CompanionServer implements IIntegration {
     });
   }
 
-  public provide(store: Conf<StoreSchema>, memoryStore: MemoryStore<MemoryStoreSchema>, ytmView: BrowserView): void {
+  public provide(store: Conf<StoreSchema>, memoryStore: MemoryStore<MemoryStoreSchema>, ytmView: BrowserView, ytVideoView: BrowserView): void {
     this.store = store;
     this.memoryStore = memoryStore;
     this.ytmView = ytmView;
+    this.ytVideoView = ytVideoView;
   }
 
   public async enable() {
