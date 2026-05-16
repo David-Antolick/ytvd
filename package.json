@@ -58,7 +58,7 @@
     "@fastify/error": "^4.2.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/type-provider-typebox": "^5.2.0",
-    "@sinclair/typebox": "^0.34.48",
+    "@sinclair/typebox": "^0.34.49",
     "conf": "^10.2.0",
     "electron-log": "5.4.3",
     "electron-squirrel-startup": "^1.0.1",
@@ -66,7 +66,7 @@
     "fastify-socket.io": "^5.1.0",
     "material-symbols": "^0.12.0",
     "socket.io": "^4.8.3",
-    "vue": "^3.5.28"
+    "vue": "^3.5.34"
   },
   "lint-staged": {
     "*.{ts,tsx,vue}": [
