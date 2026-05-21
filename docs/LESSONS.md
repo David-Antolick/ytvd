@@ -17,6 +17,231 @@ Format:
 
 ---
 
+## Cold-start API play blocked by Chromium autoplay gate
+
+**Symptom:** REX (or any companion-server client) sends `play` /
+`playPause` to a freshly launched YTVD, server returns 204, nothing
+happens. Clicking the GUI once "fixes" it for the session.
+
+**Root cause:** `continueWhereYouLeftOffPaused` (default `true`) sets
+the music view's `autoplayPolicy` to `document-user-activation-required`
+at [src/main/index.ts createYTMView](../src/main/index.ts). The
+companion IPC's `playerApi.playVideo()` runs without a user gesture, so
+Chromium rejects it.
+
+**Fix:** For music `play` / `pause` / `playPause` from `/api/v1/command`
+and `/api/v1/playback/command`, run the playerApi call via
+`webContents.executeJavaScript(code, true)` — the `userGesture: true`
+arg satisfies the gate. The cold-start "resume paused" behavior is
+preserved because page load itself still has no gesture.
+
+**Lesson:** `webContents.send` IPC does not carry a user gesture into
+the page; for anything autoplay-gated, drive it from main with
+`executeJavaScript(code, true)`.
+
+---
+
+## Title-bar overlay buttons paint over fullscreen video
+
+**Symptom:** In fullscreen (HTML5 or window F11), the min/max/close
+buttons keep showing as a strip on top of the video.
+
+**Root cause:** Native title-bar overlay (configured via
+`titleBarOverlay: { color, symbolColor }`) is part of the window chrome
+and paints above BrowserView content regardless of view bounds.
+
+**Fix:** On enter-fullscreen (both HTML5 and OS), call
+`mainWindow.setTitleBarOverlay({ color: "#00000000", symbolColor:
+"#FFFFFF" })` — transparent background, **visible** symbol color.
+Restore `#000000` / `#BBBBBB` on leave. The OS still draws a hover
+background on these buttons; if `symbolColor` is also transparent the
+hover shows an empty box with no icon, which is worse than the
+original problem.
+
+**Lesson:** Resizing a BrowserView to (0,0,w,h) does not cover the
+overlay — it's drawn by the OS/DWM, not the renderer. And the
+OS-drawn hover bg means symbolColor needs to stay visible even when
+the background is transparent.
+
+---
+
+## BrowserView resize lag flashes the main renderer through
+
+**Symptom:** While dragging the window edge to resize, the YTVD
+TitleBar (with text "YTVD") and `#222222` background bars flash on
+the top and bottom of the BrowserView content.
+
+**Root cause:** Without `setAutoResize`, `BrowserView` only catches up
+to its parent `BrowserWindow`'s new size when a `resize` event handler
+fires `setBounds`. During the drag the view stays at its old
+dimensions, exposing whatever the main renderer paints underneath.
+
+**Fix:** `view.setAutoResize({ width: true, height: true })` on both
+`ytmView` and `ytVideoView` right after creation. View now resizes
+synchronously with the parent.
+
+**Lesson:** `BrowserView` does **not** auto-resize by default; this
+catches everyone exactly once.
+
+---
+
+## Supply-chain `resolutions` catalog (2026-05-20)
+
+`resolutions` in [../package.json](../package.json) is the audit trail
+for transitive CVE overrides. Each entry must carry a reason and be
+re-evaluated when consumers bump (many become unnecessary over time).
+
+| Resolution                    | Why                                                              |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `ajv@^8: ^8.20.0`             | Runtime ReDoS in `<8.18.0` (conf tree). Selector scoped to `^8` so it doesn't poison ESLint's ajv-6 chain. |
+| `fast-uri: ^3.1.2`            | Runtime path-traversal + host confusion in `<=3.1.1`             |
+| `fast-json-stringify: ^6.4.0` | Runtime: pulls patched fast-uri                                  |
+| `ws: ^8.20.1`                 | Runtime DoS + memory disclosure (socket.io tree)                 |
+| `rollup: ^4.59.0`             | Dev path traversal (vite tree)                                   |
+| `postcss: ^8.5.14`            | Dev XSS (vite tree)                                              |
+| `node-gyp: ^12.2.0`           | Dev: forces fsevents off `node-gyp@latest` (pinned to 9)         |
+| `@electron/rebuild: ^4.0.4`   | Dev: drops `tar@6.x` entirely (cleared 6 advisories)             |
+| `cross-spawn: ^7.0.5`         | Dev ReDoS — Forge `@electron-forge/core → username → execa@1` chain otherwise pulls vulnerable `cross-spawn@6.0.6` |
+| `brace-expansion@^1.1.7: ^1.1.13` | Dev ReDoS — fires on `minimatch@3.1.5`'s declared `^1.1.7` request (ESLint + Forge) |
+| `serialize-javascript: ^7.0.5` | Dev RCE (terser-webpack-plugin)                                 |
+| `picomatch: ^4.0.4`           | Dev ReDoS (tinyglobby tree)                                      |
+| `diff@^4: ^4.0.4`             | Dev ReDoS scoped to v4 (ts-node tree)                            |
+| `yaml: ^2.9.0`                | Dev stack overflow (lint-staged tree)                            |
+| `tmp: ^0.2.5`                 | Dev arbitrary write (external-editor tree)                       |
+| `@tootallnate/once: ^3.0.1`   | Dev control-flow scoping (http-proxy-agent tree)                 |
+
+**See also:** [DECISIONS.md — Hold Electron on 40.x](DECISIONS.md),
+[DECISIONS.md — ESLint 8 → 9](DECISIONS.md).
+
+---
+
+## Deferred CVEs (dev/build only, 2026-05-20)
+
+After the ESLint 9 migration `yarn audit` reports 16 advisories — all
+dev/build-only, none in the runtime tree.
+
+1. **ESLint residual** (2): `flatted` via `file-entry-cache@8` →
+   `flat-cache@4`, still bundled with ESLint 10. Cleared when upstream
+   eslint upgrades file-entry-cache.
+2. **Forge installer tooling** (13): `lodash`, `lodash.template`,
+   `lodash.get`, `asar`, `glob@7`, `inflight`, `boolean`, `gar`,
+   `minimatch@9` (via `@electron/universal`), `rimraf@2` (via `temp`).
+   Runs only during `yarn make`. Fix: out of our hands until Forge
+   updates.
+
+A new advisory *not* in these clusters is a signal to investigate.
+
+---
+
+## Vite 6 dep-optimizer one-shot TypeError
+
+**Symptom:** After Vite 5 → 6, first `yarn start` (with "Re-optimizing
+dependencies because lockfile has changed") emitted a non-fatal
+`TypeError: Cannot read properties of undefined (reading 'join')` from
+the optimized-deps step. Build proceeded; second start was clean.
+
+**Lesson:** Cache-rebuild path is fragile in Vite 6.x but non-blocking.
+Restart to confirm before treating a single such error as a regression.
+Workaround if it ever escalates: `rm -rf node_modules/.vite` before
+first start.
+
+---
+
+## Yarn `resolutions` selector matches the consumer's exact declared range string
+
+`brace-expansion@^1.1.11: ^1.1.13` was a no-op resolution — the actual
+consumer (`minimatch@3.1.5`) declares `brace-expansion: ^1.1.7`, not
+`^1.1.11`. The selector form `pkg@<range>` matches the consumer's
+declared range string, not a semver intersection. Even
+`brace-expansion@^1: ^1.1.13` (broader) didn't fire against a `^1.1.7`
+consumer. Only `brace-expansion@^1.1.7: ^1.1.13` (exact match)
+triggered.
+
+**Lesson:** When scoping a `resolutions` selector, run `yarn why <pkg>`,
+copy the consumer's declared range string verbatim, and use *that* on
+the left side. Don't generalize. This contradicts the apparent
+generality of the earlier diff lesson — both forms work for some
+combinations and not others, so default to the exact-match form.
+
+---
+
+## Unscoped `ajv: ^8.20.0` resolution silently broke `yarn lint`
+
+Adding an unscoped `ajv: ^8.20.0` resolution (for the runtime ReDoS in
+conf's chain) crashed every `yarn lint` with `NOT SUPPORTED: option
+missingRefs` from `@eslint/eslintrc`'s ajv-6 compat code. ESLint 8 (and
+9) still depend on `ajv@^6.14.0` via `@eslint/eslintrc`, and the
+resolution forced ajv 8 onto that consumer too — ajv 7 removed
+`missingRefs`, so the legacy shim immediately threw.
+
+Worse: lint had been silently broken since the resolution was
+introduced. Nobody noticed because the error looked like a transient
+node error and `lint-staged` swallowed it on pre-commit.
+
+**Fix:** Scope to `ajv@^8: ^8.20.0` so only consumers in the ajv-8
+range get the override.
+
+**Lesson:** Same as the brace-expansion lesson, with sharper teeth.
+Unscoped `resolutions` on common packages (ajv, lodash, semver, …) can
+hit a hidden major-version branch and break tooling silently. If a
+package has multiple co-existing major lines in your tree, always scope
+the resolution.
+
+---
+
+## Yarn `resolutions` won't override across a major version boundary
+
+`"diff": "^7.0.0"` to fix a `diff@4.0.2` ReDoS via `ts-node` (which
+declares `diff: ^4.0.1`) silently didn't apply — Yarn drops a
+resolution when it would put the version outside the consumer's
+declared range. Use a scoped selector that stays in range:
+`"diff@^4": "^4.0.4"`. Default to the scoped form (`"<pkg>@<original-range>": "<safe>"`)
+unless you've separately verified compatibility with the new major.
+
+---
+
+## Yarn 4 `packageExtensions` cannot widen existing peer deps
+
+`packageExtensions` only **adds** missing peer entries — it can't
+override existing ones. Tried to widen `fastify-socket.io`'s
+`fastify: 4.x.x` peer to `^4 || ^5`; Yarn emitted YN0069 ("rule seems
+redundant") and the warning persisted. Treat YN0069 as "the rule did
+nothing." For widening, use `yarn patch` (with caveat below) or replace
+the dep.
+
+---
+
+## Yarn 4 patches modify on-disk content but keep cached peer metadata
+
+`yarn patch` + `yarn patch-commit` writes the patch and updates
+`node_modules`, but Yarn snapshots `peerDependencies` in `yarn.lock` at
+original-resolution time and doesn't refresh from the patched archive.
+Peer warnings keep firing after a correct patch. For peer changes,
+replace the dep. `yarn patch` is fine for code/runtime fixes.
+
+---
+
+## `fsevents` declares `node-gyp: "latest"` — pins to whatever was current
+
+A `yarn audit` hit on `tar@6.2.1` via `node-gyp@9.4.0` persisted even
+after bumping `@electron/rebuild` to 4.x (which uses node-gyp 12).
+Cause: `fsevents` (macOS-only) declares `node-gyp: "latest"` literally;
+Yarn froze that to whatever was current at lockfile creation and never
+refreshes. Fix: force `node-gyp: "^12.2.0"` in resolutions. When an
+audit hit points at a version you don't recognize, search `yarn.lock`
+for `"npm:latest"`.
+
+---
+
+## Bare `yarn up <pkg>` jumps to absolute latest
+
+`yarn up vite` jumped 5.4.21 → 8.0.13 (three majors) and rewrote the
+constraint to `^8.0.13`. Bare `yarn up` is "remove + add at latest."
+For a contained bump, specify the upper bound: `yarn up vite@^5` or
+`yarn up vite@^5.4`.
+
+---
+
 ## YouTube home page renders blank until the BrowserView is shown — needs a forced reload on first attach
 
 **Symptom:** After clicking the title-bar switcher to show the YouTube view

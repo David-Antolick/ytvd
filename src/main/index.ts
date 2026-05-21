@@ -1046,6 +1046,9 @@ const createYTMView = (): void => {
       disableHtmlFullscreenWindowResize: true
     }
   });
+  // YTVD: keep view in lockstep with parent window during resize so the underlying
+  // main renderer (title bar + #222222 bg) does not flash through as "bars".
+  ytmView.setAutoResize({ width: true, height: true });
   companionServer.provide(store, memoryStore, ytmView, ytVideoView);
   customCss.provide(store, ytmView);
   ratioVolume.provide(ytmView);
@@ -1223,6 +1226,9 @@ const createYTVideoView = (): void => {
       disableHtmlFullscreenWindowResize: true
     }
   });
+  // YTVD: keep view in lockstep with parent window during resize so the underlying
+  // main renderer (title bar + #222222 bg) does not flash through as "bars".
+  ytVideoView.setAutoResize({ width: true, height: true });
 
   ytVideoView.webContents.on("will-navigate", event => {
     const url = new URL(event.url);
@@ -1294,6 +1300,7 @@ function applyInWindowFullscreen(view: BrowserView) {
     width: mainWindow.getContentBounds().width,
     height: mainWindow.getContentBounds().height
   });
+  setTitleBarOverlayVisible(false);
 }
 
 function applyNormalViewBounds(view: BrowserView) {
@@ -1304,6 +1311,25 @@ function applyNormalViewBounds(view: BrowserView) {
     width: mainWindow.getContentBounds().width,
     height: mainWindow.getContentBounds().height - 36
   });
+  setTitleBarOverlayVisible(true);
+}
+
+// YTVD: the native title-bar overlay paints on top of BrowserView content, so in
+// fullscreen the min/max/close buttons keep showing as an opaque strip on top of
+// the video. Hide the background but keep the symbol color visible — buttons
+// render as small white icons against the video, hover/click still works, and
+// the OS-drawn hover background no longer reveals empty boxes with no icon.
+function setTitleBarOverlayVisible(visible: boolean) {
+  if (!mainWindow) return;
+  try {
+    mainWindow.setTitleBarOverlay({
+      color: visible ? "#000000" : "#00000000",
+      symbolColor: visible ? "#BBBBBB" : "#FFFFFF",
+      height: 36
+    });
+  } catch {
+    /* setTitleBarOverlay is Win/Linux-only; no-op elsewhere */
+  }
 }
 
 function showYTVideoView() {
@@ -1410,6 +1436,7 @@ const createMainWindow = (): void => {
       if (ytmView) ytmView.setBounds(bounds);
       if (ytVideoView) ytVideoView.setBounds(bounds);
     });
+    setTitleBarOverlayVisible(false);
     sendMainWindowStateIpc();
   });
   mainWindow.on("leave-full-screen", () => {
@@ -1423,6 +1450,7 @@ const createMainWindow = (): void => {
       if (ytmView) ytmView.setBounds(bounds);
       if (ytVideoView) ytVideoView.setBounds(bounds);
     });
+    setTitleBarOverlayVisible(true);
     sendMainWindowStateIpc();
   });
   mainWindow.on("maximize", sendMainWindowStateIpc);

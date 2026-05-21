@@ -97,23 +97,31 @@ type Playlist = {
 
 const authorizationWindows: BrowserWindow[] = [];
 
+// YTVD: invoking the YTM playerApi via executeJavaScript with userGesture=true
+// satisfies Chromium's autoplay gate for API-driven play. Without this, cold-start
+// API play is rejected when continueWhereYouLeftOffPaused is enabled (the gate is
+// `document-user-activation-required` in that mode — see createYTMView in main).
+const YTM_PLAY_JS = `(function(){try{document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.playVideo();}catch(e){}})();`;
+const YTM_PAUSE_JS = `(function(){try{document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.pauseVideo();}catch(e){}})();`;
+const YTM_PLAY_PAUSE_JS = `(function(){try{var b=document.querySelector("ytmusic-app-layout>ytmusic-player-bar");b.playing?b.playerApi.pauseVideo():b.playerApi.playVideo();}catch(e){}})();`;
+
 const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> = async (fastify, options) => {
   const sendCommand = (commandRequest: APIV1CommandRequestBodyType) => {
     const ytmView = options.getYtmView();
     if (ytmView) {
       switch (commandRequest.command) {
         case "playPause": {
-          ytmView.webContents.send("remoteControl:execute", "playPause");
+          ytmView.webContents.executeJavaScript(YTM_PLAY_PAUSE_JS, true);
           break;
         }
 
         case "play": {
-          ytmView.webContents.send("remoteControl:execute", "play");
+          ytmView.webContents.executeJavaScript(YTM_PLAY_JS, true);
           break;
         }
 
         case "pause": {
-          ytmView.webContents.send("remoteControl:execute", "pause");
+          ytmView.webContents.executeJavaScript(YTM_PAUSE_JS, true);
           break;
         }
 

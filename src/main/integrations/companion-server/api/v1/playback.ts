@@ -6,6 +6,10 @@ import { isAuthValidMiddleware } from "../../api-shared/auth";
 import sourceCoordinator from "../../../../source-coordinator";
 import playerStateStore from "../../../../player-state-store";
 
+const YTM_PLAY_JS = `(function(){try{document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.playVideo();}catch(e){}})();`;
+const YTM_PAUSE_JS = `(function(){try{document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.pauseVideo();}catch(e){}})();`;
+const YTM_PLAY_PAUSE_JS = `(function(){try{var b=document.querySelector("ytmusic-app-layout>ytmusic-player-bar");b.playing?b.playerApi.pauseVideo():b.playerApi.playVideo();}catch(e){}})();`;
+
 const APIV1PlaybackCommandRequestBody = Type.Union([
   Type.Object({ command: Type.Literal("play") }),
   Type.Object({ command: Type.Literal("pause") }),
@@ -92,9 +96,18 @@ const CompanionServerAPIv1Playback: FastifyPluginCallback<CompanionServerAPIv1Pl
           return;
         }
         switch (body.command) {
+          // YTVD: bypass IPC for play/pause/playPause and inject a synthetic user
+          // gesture via executeJavaScript(..., true), so cold-start API play is
+          // not blocked by Chromium's autoplay gate. See createYTMView in main.
           case "play":
+            view.webContents.executeJavaScript(YTM_PLAY_JS, true);
+            break;
           case "pause":
+            view.webContents.executeJavaScript(YTM_PAUSE_JS, true);
+            break;
           case "playPause":
+            view.webContents.executeJavaScript(YTM_PLAY_PAUSE_JS, true);
+            break;
           case "mute":
           case "unmute":
           case "volumeUp":

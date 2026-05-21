@@ -8,7 +8,92 @@
 
 ---
 
-# YouTube Music Desktop App (upstream README below)
+# Developing
+
+YTVD is a Windows-side Electron project. Develop and run it from native
+Windows (PowerShell), not from WSL — the Forge/Squirrel build chain targets
+Windows directly and cross-editing from WSL invites filesystem and
+line-ending surprises.
+
+## Prerequisites
+- [Git](https://git-scm.com)
+- Node.js — pinned via [.nvmrc](.nvmrc) (currently **Node 24 LTS**). Use
+  [nvm-windows](https://github.com/coreybutler/nvm-windows): `nvm install 24 && nvm use 24`.
+- Yarn — do not install globally. The repo pins `yarn@4.5.1` via
+  `package.json#packageManager`; Corepack (bundled with Node) materializes
+  it from `.yarn/releases/`.
+
+## First-time setup (PowerShell)
+```powershell
+git clone https://github.com/David-Antolick/ytvd.git
+cd ytvd
+
+# Enable Corepack so the pinned Yarn 4 is on PATH
+corepack enable
+
+# Install dependencies (Hardened Mode is on by default — see Supply chain below)
+yarn install
+
+# Run the app in dev (Electron + Vite HMR)
+yarn start
+```
+
+## Day-to-day commands
+| Command                | Purpose                                            |
+| ---------------------- | -------------------------------------------------- |
+| `yarn start`           | Launch the dev build (main + renderer + HMR)       |
+| `yarn lint`            | ESLint over `.ts` / `.tsx` / `.vue`                |
+| `yarn prettier`        | Prettier check (use `yarn prettier:fix` to write)  |
+| `yarn package`         | Build an unpacked app under `out/`                 |
+| `yarn make`            | Produce a Windows installer (Squirrel `.exe`)      |
+| `yarn npm audit --all` | Vulnerability scan across the dependency tree      |
+
+## Supply chain
+This project treats third-party code as the largest available attack
+surface. The defaults are:
+
+- **Yarn `enableHardenedMode: true`** in [.yarnrc.yml](.yarnrc.yml). Every
+  install re-verifies resolution metadata against the registry, blocking
+  lockfile-swap attacks where a tampered fetch URL keeps the original
+  checksum.
+- **Lockfile is authoritative.** Never run `npm install` against this repo
+  — it ignores `yarn.lock` and silently drifts resolutions. If
+  `node_modules` looks wrong, delete it and re-run `yarn install`.
+- **Pinned package manager.** `packageManager: yarn@4.5.1` is verified by
+  Corepack on every invocation. Bump it deliberately, in a dedicated
+  commit.
+- **Electron binary integrity.** `@electron/get` validates Electron's
+  shipped `SHASUMS256.txt` against the Electron team's signing key on
+  first install — leave that mechanism alone.
+- **Dependency additions need a reason.** Prefer well-maintained packages
+  with multiple maintainers and provenance. Run `yarn npm audit --all`
+  before opening a PR that touches `yarn.lock`. Dependabot watches the
+  lockfile; major-version bumps are reviewed by hand, never auto-merged.
+- **Postinstall scripts.** Only the project's own `husky install` is
+  expected. If `yarn install` runs an unfamiliar postinstall, stop and
+  investigate before continuing.
+
+## Building Windows installers
+`yarn make` produces a Squirrel installer in `out/`. For a full local
+build environment (native deps, Visual Studio Build Tools, Python), the
+Electron team's bundle covers most cases:
+
+```powershell
+npm i -g @electron/build-tools
+```
+
+That installs Visual Studio, Python, and the rest of the toolchain via
+prompts. Skip it unless `yarn make` actually fails — `yarn start` does
+not need it.
+
+---
+
+# Upstream README (YouTube Music Desktop App)
+
+The sections below are inherited verbatim from the upstream
+[ytmdesktop](https://github.com/ytmdesktop/ytmdesktop) project. YTVD's
+own dev workflow lives above; the upstream notes are kept for
+historical / cross-platform reference.
 ### Now with a Fresh new Codebase 😉
 
 ![YouTube Music Desktop App](.github/images/readme_main_app.png)
@@ -52,7 +137,7 @@ TODO: Write guides for v2. While these may still be helpful they are geared towa
 - Brew: ```brew install --cask ytmdesktop-youtube-music``` (Community Maintained)
 - Binaries: <https://github.com/ytmdesktop/ytmdesktop/releases>
 
-# Developing
+## Developing (upstream)
 To clone and run this repository you'll need [Git](https://git-scm.com) and [Node.js (v20)](https://nodejs.org/en/download/) (which comes with [npm](http://npmjs.com)) installed on your computer. From your command line:
 
 ```sh

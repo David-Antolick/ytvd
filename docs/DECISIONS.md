@@ -18,6 +18,111 @@ Format:
 
 ---
 
+## 2026-05-20 — ESLint 8 → 10; flat config; swap to `eslint-plugin-import-x`
+
+**Context:** Deferred from the same-day security pass. ESLint 8 is EOL
+and accounted for ~9 deferred CVE entries. The `ajv@^8.20.0` resolution
+from that pass was also crash-poisoning ESLint 8 (and 9) via
+`@eslint/eslintrc`'s ajv-6 dep — every `yarn lint` exited before linting
+anything.
+
+**Decision:** ESLint 10.4.0 + flat config
+([eslint.config.mjs](../eslint.config.mjs)) via the `typescript-eslint`
+umbrella's `tseslint.config()`. Swap `eslint-plugin-import` for the
+active-fork `eslint-plugin-import-x` (same rules, `import-x/` prefix).
+Bump `eslint-config-prettier 9 → 10`, `eslint-plugin-vue 9 → 10`. Scope
+the `ajv` resolution to `ajv@^8` so it stops crossing into ESLint's ajv-6
+chain. Disable `no-useless-assignment` (new in 10's recommended preset,
+false-positives the `let x = ""; try { x = compute() } …` fallback
+pattern).
+
+**Alternatives:** `eslint-plugin-import` — its ESLint-9/10 flat-config
+support is still lagging.
+
+**Consequences:** Audit 22 → 16; ESLint 8 cluster cleared except
+`flatted@3` (ESLint 10 still uses `file-entry-cache` → `flat-cache` →
+`flatted`, so 2 advisories carry over). ESLint 10 no longer bundles
+`@eslint/js`; added as a direct dep.
+
+**See also:** [LESSONS — resolutions catalog](LESSONS.md),
+[LESSONS — Deferred CVEs](LESSONS.md),
+[LESSONS — Yarn resolution selector matches consumer's declared range](LESSONS.md),
+[LESSONS — Unscoped `ajv` resolution crashed ESLint](LESSONS.md).
+
+---
+
+## 2026-05-20 — Bump Vite 5 → 6 (same-day reversal)
+
+**Context:** Vite 5.4.21 has a moderate path-traversal in optimized-deps
+`.map` handling + esbuild advisory underneath. Fix is Vite 6.4.2+.
+
+**Decision:** `@vitejs/plugin-vue: ^5 → ^6.0.7`, `vite: ^5 → ^6.4.2`.
+Add `yaml: ^2.9.0`, `tmp: ^0.2.5` resolutions. Re-scope `diff` to
+`diff@^4: ^4.0.4` (the prior `^7.0.0` never applied — see
+[LESSONS](LESSONS.md)).
+
+**Alternatives:** Vite 7/8 — rejected; Forge plugin-vite is only tested
+against Vite 5. Stay on Vite 5 — reversed once `@vitejs/plugin-vue@6`
+confirmed support for `^5||^6||^7||^8` and Forge plugin-vite has no peer
+constraint on Vite.
+
+**Consequences:** 5 dev CVEs cleared (vite, esbuild, yaml, diff, tmp).
+Audit 27 → 22. Vite 6's first run after a lockfile change can emit a
+non-fatal TypeError from its dep-optimizer ([LESSONS](LESSONS.md)).
+
+---
+
+## 2026-05-20 — Hold Electron on 40.x; modernize via patch bumps + resolutions
+
+**Context:** Post-reinstall `yarn audit` flagged 61 advisories,
+including 14 in Electron 40.4.0, 5+ in `tar` (via Forge), and runtime
+hits in `ws`, `fast-uri`, `ajv`.
+
+**Decision:** Stay on Electron 40.x (patch to 40.10.1, clears 14);
+stay on Vite 5 for now; stay on ESLint 8. Yarn `resolutions` block to
+force-clear transitive CVEs without bumping consumers. Inline
+`fastify-socket.io` (separate entry). Patch Forge `7.11.1 → 7.11.2`.
+
+**Result:** 0 runtime CVEs. 22-27 dev/build entries remain, documented
+in [LESSONS — Deferred CVEs](LESSONS.md).
+
+**Alternatives:**
+- Electron 40 → 42 — defers; `BrowserView` (used extensively in
+  [src/main/index.ts](../src/main/index.ts)) is deprecated in newer
+  majors, full `WebContentsView` migration is its own effort.
+- `conf` 10 → 15 — defers; conf 11+ is ESM-only. `ajv` resolution is
+  the cheap fix and conf doesn't even use ajv (no schema in our code).
+- `yarn patch fastify-socket.io` — doesn't refresh cached peer
+  metadata ([LESSONS](LESSONS.md)); inlined instead.
+- ESLint 8 → 9 — its own PR.
+
+**Consequences:** Resolutions block is load-bearing; each entry must
+carry a reason ([LESSONS — resolutions catalog](LESSONS.md)) and be
+re-evaluated when consumers bump. Three deferred tracks: Vite 5 → 6
+(closed same day), ESLint 8 → 9, Electron 40 → 42.
+
+---
+
+## 2026-05-20 — Inline `fastify-socket.io` as a local plugin
+
+**Context:** Upstream `fastify-socket.io@5.1.0` (latest) still declares
+`fastify: 4.x.x` as its peer; YTVD/upstream YTMD ship Fastify 5, so
+every install warned. Package stopped tracking Fastify majors.
+
+**Decision:** Replace with
+[fastify-socketio.ts](../src/main/integrations/companion-server/fastify-socketio.ts)
+— ~30 lines wrapping `socket.io`'s `Server`, decorating `fastify.io`,
+running pre/onClose hooks. Behavior is byte-equivalent. Added
+`fastify-plugin@^5.1.0` as direct dep.
+
+**Alternatives:** `packageExtensions` and `yarn patch` both can't widen
+existing peer constraints ([LESSONS](LESSONS.md)).
+
+**Consequences:** One fewer external dep, no false peer warning, ~30
+lines we now own.
+
+---
+
 ## 2026-05-15 — Companion-server namespace split: /api/v1/, /playback/, /video/
 
 **Context:** Adding video control alongside music meant deciding how voice
