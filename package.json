@@ -62,7 +62,7 @@
     "@electron/fuses": "^1.8.0",
     "@eslint/js": "^10.0.1",
     "@types/electron-squirrel-startup": "^1.0.2",
-    "@types/node": "^22.19.11",
+    "@types/node": "^25.9.1",
     "@vitejs/plugin-vue": "^6",
     "electron": "^40.10.1",
     "eslint": "^10.4.0",
