@@ -29,7 +29,7 @@ const ZEROED_VIDEO_STATE: VideoStatePayload = {
   muted: false
 };
 
-class SourceCoordinator {
+export class SourceCoordinator {
   private ytmView: BrowserView | null = null;
   private ytVideoView: BrowserView | null = null;
 

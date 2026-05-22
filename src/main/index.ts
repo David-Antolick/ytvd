@@ -387,6 +387,7 @@ const store = new Conf<StoreSchema>({
       lastUrl: "https://music.youtube.com/",
       lastPlaylistId: "",
       lastVideoId: "",
+      lastActiveView: "music",
       windowBounds: null,
       windowMaximized: false
     },
@@ -568,6 +569,7 @@ function saveState() {
   store.set("state.lastUrl", lastUrl);
   store.set("state.lastVideoId", lastVideoId);
   store.set("state.lastPlaylistId", lastPlaylistId);
+  store.set("state.lastActiveView", activeView);
 }
 
 // Automatic background state saving every 5 minutes
@@ -1453,7 +1455,19 @@ const createMainWindow = (): void => {
     setTitleBarOverlayVisible(true);
     sendMainWindowStateIpc();
   });
-  mainWindow.on("maximize", sendMainWindowStateIpc);
+  mainWindow.on("maximize", () => {
+    // YTVD: with frame: false, Windows maximizes to the full display rect — including the
+    // taskbar area — so the always-on-top taskbar paints over the bottom of the BrowserView.
+    // Snap back to the display's work area on maximize.
+    if (process.platform === "win32") {
+      const workArea = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
+      const current = mainWindow.getBounds();
+      if (current.x !== workArea.x || current.y !== workArea.y || current.width !== workArea.width || current.height !== workArea.height) {
+        mainWindow.setBounds(workArea);
+      }
+    }
+    sendMainWindowStateIpc();
+  });
   mainWindow.on("unmaximize", sendMainWindowStateIpc);
   mainWindow.on("minimize", sendMainWindowStateIpc);
   mainWindow.on("restore", sendMainWindowStateIpc);
@@ -1764,6 +1778,11 @@ app.on("ready", async () => {
       ratioVolume.ytmViewLoaded();
       // TODO: this is just a hack fix for custom css to update CSS when the view loads
       customCss.updateCSS();
+
+      // Restore the last-active view (music/video) if the user has continue-where-you-left-off on.
+      if (store.get("playback.continueWhereYouLeftOff") && store.get("state.lastActiveView") === "video") {
+        showYTVideoView();
+      }
     }
   });
 

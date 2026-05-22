@@ -17,6 +17,8 @@
     "prettier": "prettier --check *.{ts,tsx,vue}",
     "prettier:fix": "prettier --write *.{ts,tsx,vue}",
     "audit": "yarn npm audit --all --recursive",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "husky install"
   },
   "keywords": [],
@@ -76,6 +78,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.59.4",
     "vite": "^6",
+    "vitest": "^4.1.7",
     "vue-eslint-parser": "^10.4.0"
   },
   "dependencies": {
