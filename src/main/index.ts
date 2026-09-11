@@ -27,6 +27,7 @@ import electronSquirrelStartup from "electron-squirrel-startup";
 import MemoryStore from "./memory-store";
 import playerStateStore, { PlayerState, VideoState } from "./player-state-store";
 import sourceCoordinator from "./source-coordinator";
+import { boundsVisibleOnAnyDisplay } from "./window-bounds";
 import { MemoryStoreSchema, StoreSchema, TrayIconStyle } from "../shared/store/schema";
 
 import CompanionServer from "./integrations/companion-server";
@@ -1373,7 +1374,18 @@ function hideYTVideoView() {
 const createMainWindow = (): void => {
   // Create the browser window.
   const scaleFactor = screen.getPrimaryDisplay().scaleFactor;
-  const windowBounds = store.get("state").windowBounds;
+  const savedBounds = store.get("state").windowBounds;
+  const windowBounds =
+    savedBounds &&
+    boundsVisibleOnAnyDisplay(
+      savedBounds,
+      screen.getAllDisplays().map(display => display.workArea)
+    )
+      ? savedBounds
+      : null;
+  if (savedBounds && !windowBounds) {
+    log.info("Saved window bounds are off-screen, resetting to default position");
+  }
   mainWindow = new BrowserWindow({
     width: windowBounds?.width ?? 1280 / scaleFactor,
     height: windowBounds?.height ?? 720 / scaleFactor,
