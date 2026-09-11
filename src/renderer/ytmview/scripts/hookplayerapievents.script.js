@@ -5,7 +5,7 @@
     // We don't want to see everything in the store as there can be some sensitive data so we only send what's necessary to operate
     let state = ytmStore.getState();
 
-    const videoId = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlayerResponse()?.videoDetails?.videoId;
+    const videoId = window.__YTMD_HOOK__.ytmPlayerBar.playerApi.getPlayerResponse()?.videoDetails?.videoId;
     const likeButtonData = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").querySelector("ytmusic-like-button-renderer").data;
     const defaultLikeStatus = likeButtonData?.likeStatus ?? "UNKNOWN";
     const storeLikeStatus = state.likeStatus.videos[videoId];
@@ -18,16 +18,16 @@
     window.ytmd.sendStoreUpdate(state.queue, likeStatus, volume, muted, adPlaying);
   }
 
-  document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.addEventListener("onVideoProgress", progress => {
+  window.__YTMD_HOOK__.ytmPlayerBar.playerApi.addEventListener("onVideoProgress", progress => {
     window.ytmd.sendVideoProgress(progress);
   });
-  document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.addEventListener("onStateChange", state => {
+  window.__YTMD_HOOK__.ytmPlayerBar.playerApi.addEventListener("onStateChange", state => {
     window.ytmd.sendVideoState(state);
   });
-  document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.addEventListener("onVideoDataChange", event => {
+  window.__YTMD_HOOK__.ytmPlayerBar.playerApi.addEventListener("onVideoDataChange", event => {
     if (event.playertype === 1 && (event.type === "dataloaded" || event.type === "dataupdated")) {
-      let videoDetails = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlayerResponse().videoDetails;
-      let playlistId = document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.getPlaylistId();
+      let videoDetails = window.__YTMD_HOOK__.ytmPlayerBar.playerApi.getPlayerResponse().videoDetails;
+      let playlistId = window.__YTMD_HOOK__.ytmPlayerBar.playerApi.getPlaylistId();
       let album = null;
       let hasFullMetadata = false;
 

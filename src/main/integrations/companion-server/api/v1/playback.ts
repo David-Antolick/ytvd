@@ -6,9 +6,9 @@ import { isAuthValidMiddleware } from "../../api-shared/auth";
 import sourceCoordinator from "../../../../source-coordinator";
 import playerStateStore from "../../../../player-state-store";
 
-const YTM_PLAY_JS = `(function(){try{document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.playVideo();}catch(e){}})();`;
-const YTM_PAUSE_JS = `(function(){try{document.querySelector("ytmusic-app-layout>ytmusic-player-bar").playerApi.pauseVideo();}catch(e){}})();`;
-const YTM_PLAY_PAUSE_JS = `(function(){try{var b=document.querySelector("ytmusic-app-layout>ytmusic-player-bar");b.playing?b.playerApi.pauseVideo():b.playerApi.playVideo();}catch(e){}})();`;
+const YTM_PLAY_JS = `(function(){try{window.__YTMD_HOOK__.ytmPlayerBar.playerApi.playVideo();}catch(e){}})();`;
+const YTM_PAUSE_JS = `(function(){try{window.__YTMD_HOOK__.ytmPlayerBar.playerApi.pauseVideo();}catch(e){}})();`;
+const YTM_PLAY_PAUSE_JS = `(function(){try{var b=document.querySelector("ytmusic-app-layout>ytmusic-player-bar"),p=window.__YTMD_HOOK__.ytmPlayerBar.playerApi;b.playing?p.pauseVideo():p.playVideo();}catch(e){}})();`;
 
 const APIV1PlaybackCommandRequestBody = Type.Union([
   Type.Object({ command: Type.Literal("play") }),
